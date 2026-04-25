@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import './index.css';
 
+// The System Shop Inventory
 const TOWER_TYPES = {
-  1: { id: 1, name: 'Rapid Circle', cost: 50, range: 150, damage: 100, cooldown: 500, color: '#00ffcc', beam: '#ffff00' },
-  2: { id: 2, name: 'Heavy Triangle', cost: 100, range: 200, damage: 350, cooldown: 1500, color: '#33ff33', beam: '#33ff33' }
+  1: { id: 1, name: 'Rapid Circle', cost: 10, range: 120, damage: 60, cooldown: 400, color: '#00ffcc', beam: '#ffff00' },
+  2: { id: 2, name: 'Heavy Triangle', cost: 25, range: 180, damage: 180, cooldown: 1000, color: '#33ff33', beam: '#33ff33' },
+  3: { id: 3, name: 'Sniper Square', cost: 50, range: 280, damage: 500, cooldown: 2000, color: '#ff33cc', beam: '#ff33cc' }
 };
 
 export default function App() {
   const canvasRef = useRef(null);
 
-  // React State for the UI
-  const [uiState, setUiState] = useState({ wave: 1, lives: 10, money: 150, status: 'PLAYING', selectedTower: 1 });
+  const [uiState, setUiState] = useState({ wave: 1, lives: 10, money: 15, status: 'PLAYING', selectedTower: 1 });
 
-  // Refs for the fast-moving game engine data
   const gameState = useRef({
     enemies: [],
     towers: [],
@@ -21,12 +21,13 @@ export default function App() {
     ],
     wave: 1,
     lives: 10,
-    money: 150,
+    money: 15,
     status: 'PLAYING',
     enemiesSpawnedThisWave: 0,
     enemiesPerWave: 10,
     lastSpawnTime: 0,
-    waveIntermissionTimer: 0
+    waveIntermissionTimer: 0,
+    waveBonusGiven: false
   });
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export default function App() {
     let animationFrameId;
 
     const render = (timestamp) => {
-      // 1. Clear the screen
+      // 1. Clear screen
       ctx.fillStyle = '#050b14';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -48,13 +49,13 @@ export default function App() {
         return;
       }
 
-      // 2. Draw the Path
+      // 2. Draw Path
       ctx.beginPath();
       ctx.moveTo(gameState.current.path[0].x, gameState.current.path[0].y);
       for (let i = 1; i < gameState.current.path.length; i++) {
         ctx.lineTo(gameState.current.path[i].x, gameState.current.path[i].y);
       }
-      ctx.strokeStyle = 'rgba(77, 166, 255, 0.2)';
+      ctx.strokeStyle = 'rgba(77, 166, 255, 0.15)';
       ctx.lineWidth = 40;
       ctx.stroke();
 
@@ -80,14 +81,27 @@ export default function App() {
         } else if (gameState.current.enemies.length === 0) {
           gameState.current.status = 'WAITING';
           gameState.current.waveIntermissionTimer = timestamp;
+          gameState.current.waveBonusGiven = false;
         }
       } else if (gameState.current.status === 'WAITING') {
+        const waveBonus = gameState.current.wave * 5;
+
+        // Give round bonus once
+        if (!gameState.current.waveBonusGiven) {
+          gameState.current.money += waveBonus;
+          setUiState(prev => ({ ...prev, money: gameState.current.money }));
+          gameState.current.waveBonusGiven = true;
+        }
+
         ctx.fillStyle = '#4da6ff';
         ctx.font = 'bold 30px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`WAVE ${gameState.current.wave} CLEARED. PREPARING...`, canvas.width / 2, 50);
+        ctx.fillText(`WAVE ${gameState.current.wave} CLEARED`, canvas.width / 2, 50);
+        ctx.fillStyle = '#ffcc00';
+        ctx.font = 'bold 20px monospace';
+        ctx.fillText(`ROUND BONUS: +${waveBonus} COINS`, canvas.width / 2, 85);
 
-        if (timestamp - gameState.current.waveIntermissionTimer > 3000) {
+        if (timestamp - gameState.current.waveIntermissionTimer > 4000) {
           gameState.current.wave++;
           gameState.current.enemiesSpawnedThisWave = 0;
           gameState.current.enemiesPerWave = 10 + (gameState.current.wave * 2);
@@ -123,7 +137,6 @@ export default function App() {
           enemy.y += (dy / dist) * enemy.speed;
         }
 
-        // Draw Enemy
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
         ctx.fillStyle = '#ff3366';
@@ -132,7 +145,6 @@ export default function App() {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Draw HP Bar
         ctx.fillStyle = '#333';
         ctx.fillRect(enemy.x - 10, enemy.y - 18, 20, 4);
         ctx.fillStyle = '#00ffcc';
@@ -143,15 +155,16 @@ export default function App() {
       gameState.current.towers.forEach(tower => {
         const stats = TOWER_TYPES[tower.type];
 
-        // Draw Tower Shape based on type
         ctx.beginPath();
-        if (tower.type === 1) {
-          ctx.arc(tower.x, tower.y, 20, 0, Math.PI * 2);
-        } else if (tower.type === 2) {
-          ctx.moveTo(tower.x, tower.y - 20);
-          ctx.lineTo(tower.x + 20, tower.y + 15);
-          ctx.lineTo(tower.x - 20, tower.y + 15);
+        if (tower.type === 1) { // Circle
+          ctx.arc(tower.x, tower.y, 15, 0, Math.PI * 2);
+        } else if (tower.type === 2) { // Triangle
+          ctx.moveTo(tower.x, tower.y - 18);
+          ctx.lineTo(tower.x + 18, tower.y + 12);
+          ctx.lineTo(tower.x - 18, tower.y + 12);
           ctx.closePath();
+        } else if (tower.type === 3) { // Square
+          ctx.rect(tower.x - 15, tower.y - 15, 30, 30);
         }
 
         ctx.strokeStyle = stats.color;
@@ -161,18 +174,16 @@ export default function App() {
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // Combat Logic
         for (let i = 0; i < gameState.current.enemies.length; i++) {
           let enemy = gameState.current.enemies[i];
           let dist = Math.sqrt(Math.pow(enemy.x - tower.x, 2) + Math.pow(enemy.y - tower.y, 2));
 
           if (dist < stats.range && timestamp - tower.lastShot > stats.cooldown) {
-            // Draw Laser
             ctx.beginPath();
             ctx.moveTo(tower.x, tower.y);
             ctx.lineTo(enemy.x, enemy.y);
             ctx.strokeStyle = stats.beam;
-            ctx.lineWidth = tower.type === 2 ? 4 : 2; // Triangle has thicker beam
+            ctx.lineWidth = tower.type === 3 ? 5 : (tower.type === 2 ? 3 : 2);
             ctx.stroke();
 
             enemy.hp -= stats.damage;
@@ -180,7 +191,7 @@ export default function App() {
 
             if (enemy.hp <= 0) {
               gameState.current.enemies.splice(i, 1);
-              gameState.current.money += 10; // EARN MONEY
+              gameState.current.money += 1; // 1 COIN PER KILL
               setUiState(prev => ({ ...prev, money: gameState.current.money }));
             }
             break;
@@ -195,7 +206,6 @@ export default function App() {
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
-  // Handle building towers
   const handleCanvasClick = (e) => {
     if (gameState.current.status !== 'PLAYING' && gameState.current.status !== 'WAITING') return;
 
@@ -219,20 +229,20 @@ export default function App() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px', fontFamily: 'monospace', backgroundColor: '#050b14', minHeight: '100vh', color: '#00ffcc' }}>
-      <h1 style={{ textShadow: '0 0 10px #00ffcc', letterSpacing: '3px', margin: '0' }}>CYBER DEFENSE OS</h1>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '10px', fontFamily: 'monospace', backgroundColor: '#050b14', minHeight: '100vh', color: '#00ffcc' }}>
+      <h1 style={{ textShadow: '0 0 10px #00ffcc', letterSpacing: '3px', margin: '10px 0' }}>CYBER DEFENSE OS</h1>
 
       {/* Top HUD */}
-      <div style={{ display: 'flex', gap: '40px', margin: '20px 0', fontSize: '20px', fontWeight: 'bold' }}>
+      <div style={{ display: 'flex', gap: '40px', marginBottom: '15px', fontSize: '20px', fontWeight: 'bold' }}>
         <div style={{ color: '#4da6ff' }}>WAVE: {uiState.wave}</div>
-        <div style={{ color: '#ffcc00' }}>CREDITS: ${uiState.money}</div>
+        <div style={{ color: '#ffcc00' }}>COINS: {uiState.money}</div>
         <div style={{ color: '#ff3366' }}>INTEGRITY: {uiState.lives} / 10</div>
       </div>
 
       <canvas
         ref={canvasRef}
         width={800}
-        height={600}
+        height={500}
         onClick={handleCanvasClick}
         style={{
           border: '2px solid #4da6ff',
@@ -242,28 +252,43 @@ export default function App() {
         }}
       />
 
-      {/* Bottom Toolbar */}
-      <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
-        {Object.values(TOWER_TYPES).map(tower => (
-          <button
-            key={tower.id}
-            onClick={() => setUiState(prev => ({ ...prev, selectedTower: tower.id }))}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: uiState.selectedTower === tower.id ? 'rgba(0, 255, 204, 0.2)' : 'transparent',
-              border: `2px solid ${tower.color}`,
-              color: tower.color,
-              fontFamily: 'monospace',
-              fontSize: '16px',
-              cursor: 'pointer',
-              boxShadow: uiState.selectedTower === tower.id ? `0 0 10px ${tower.color}` : 'none'
-            }}
-          >
-            {tower.name} (${tower.cost})
-          </button>
-        ))}
+      {/* SYSTEM SHOP */}
+      <div style={{
+        marginTop: '20px',
+        padding: '15px',
+        border: '1px solid #4da6ff',
+        backgroundColor: '#0a1526',
+        borderRadius: '5px',
+        width: '770px'
+      }}>
+        <h3 style={{ margin: '0 0 15px 0', color: '#fff', textAlign: 'center', letterSpacing: '2px' }}>-- SYSTEM SHOP --</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+          {Object.values(TOWER_TYPES).map(tower => {
+            const canAfford = uiState.money >= tower.cost;
+            return (
+              <button
+                key={tower.id}
+                onClick={() => setUiState(prev => ({ ...prev, selectedTower: tower.id }))}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: uiState.selectedTower === tower.id ? `rgba(${tower.color === '#00ffcc' ? '0,255,204' : tower.color === '#33ff33' ? '51,255,51' : '255,51,204'}, 0.2)` : '#050b14',
+                  border: `2px solid ${canAfford ? tower.color : '#333'}`,
+                  color: canAfford ? tower.color : '#555',
+                  fontFamily: 'monospace',
+                  fontSize: '16px',
+                  cursor: canAfford ? 'pointer' : 'not-allowed',
+                  boxShadow: uiState.selectedTower === tower.id ? `0 0 15px ${tower.color}` : 'none',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>{tower.name}</div>
+                <div style={{ color: '#ffcc00' }}>Cost: {tower.cost} Coins</div>
+                <div style={{ fontSize: '12px', color: '#888', marginTop: '5px' }}>Dmg: {tower.damage} | Rng: {tower.range}</div>
+              </button>
+            )
+          })}
+        </div>
       </div>
-      <p style={{ color: '#4da6ff', marginTop: '10px' }}>Select a tower below, then click the grid to deploy.</p>
     </div>
   );
 }
