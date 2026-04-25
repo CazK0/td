@@ -1,26 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import './index.css';
 
+const TOWER_TYPES = {
+  1: { id: 1, name: 'Rapid Circle', cost: 50, range: 150, damage: 100, cooldown: 500, color: '#00ffcc', beam: '#ffff00' },
+  2: { id: 2, name: 'Heavy Triangle', cost: 100, range: 200, damage: 350, cooldown: 1500, color: '#33ff33', beam: '#33ff33' }
+};
+
 export default function App() {
   const canvasRef = useRef(null);
 
-  // We use standard React State for the UI text (so it updates on screen)
-  const [uiState, setUiState] = useState({ wave: 1, lives: 10, status: 'PLAYING' });
+  // React State for the UI
+  const [uiState, setUiState] = useState({ wave: 1, lives: 10, money: 150, status: 'PLAYING', selectedTower: 1 });
 
-  // We use Refs for the fast-moving game engine data
+  // Refs for the fast-moving game engine data
   const gameState = useRef({
     enemies: [],
     towers: [],
     path: [
-      { x: 0, y: 150 },
-      { x: 500, y: 150 },
-      { x: 500, y: 450 },
-      { x: 1000, y: 450 }
+      { x: 0, y: 150 }, { x: 500, y: 150 }, { x: 500, y: 450 }, { x: 1000, y: 450 }
     ],
-    // Wave System Data
     wave: 1,
     lives: 10,
-    status: 'PLAYING', // PLAYING, WAITING, GAME_OVER
+    money: 150,
+    status: 'PLAYING',
     enemiesSpawnedThisWave: 0,
     enemiesPerWave: 10,
     lastSpawnTime: 0,
@@ -56,14 +58,12 @@ export default function App() {
       ctx.lineWidth = 40;
       ctx.stroke();
 
-      // 3. Wave Management & Difficulty Scaling
+      // 3. Wave Management
       if (gameState.current.status === 'PLAYING') {
-        // Calculate Difficulty for this specific wave
-        const spawnDelay = Math.max(200, 1000 - (gameState.current.wave * 50)); // Caps at 200ms
+        const spawnDelay = Math.max(200, 1000 - (gameState.current.wave * 50));
         const enemySpeed = 1.5 + (gameState.current.wave * 0.2);
-        const enemyHp = 100 * Math.pow(1.2, gameState.current.wave - 1); // 20% harder every wave!
+        const enemyHp = 100 * Math.pow(1.2, gameState.current.wave - 1);
 
-        // Spawn Enemies
         if (gameState.current.enemiesSpawnedThisWave < gameState.current.enemiesPerWave) {
           if (timestamp - gameState.current.lastSpawnTime > spawnDelay) {
             gameState.current.enemies.push({
@@ -78,20 +78,21 @@ export default function App() {
             gameState.current.lastSpawnTime = timestamp;
           }
         } else if (gameState.current.enemies.length === 0) {
-          // Wave Cleared!
           gameState.current.status = 'WAITING';
           gameState.current.waveIntermissionTimer = timestamp;
         }
       } else if (gameState.current.status === 'WAITING') {
-        // 3-second pause between waves
+        ctx.fillStyle = '#4da6ff';
+        ctx.font = 'bold 30px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`WAVE ${gameState.current.wave} CLEARED. PREPARING...`, canvas.width / 2, 50);
+
         if (timestamp - gameState.current.waveIntermissionTimer > 3000) {
           gameState.current.wave++;
           gameState.current.enemiesSpawnedThisWave = 0;
-          gameState.current.enemiesPerWave = 10 + (gameState.current.wave * 2); // More enemies each wave
+          gameState.current.enemiesPerWave = 10 + (gameState.current.wave * 2);
           gameState.current.status = 'PLAYING';
-
-          // Update the React UI text safely
-          setUiState({ wave: gameState.current.wave, lives: gameState.current.lives, status: 'PLAYING' });
+          setUiState(prev => ({ ...prev, wave: gameState.current.wave, status: 'PLAYING' }));
         }
       }
 
@@ -107,7 +108,6 @@ export default function App() {
         if (dist < enemy.speed) {
           enemy.targetWaypoint++;
           if (enemy.targetWaypoint >= gameState.current.path.length) {
-            // Enemy reached the end! Lose a life.
             gameState.current.enemies.splice(i, 1);
             gameState.current.lives--;
             setUiState(prev => ({ ...prev, lives: gameState.current.lives }));
@@ -132,7 +132,7 @@ export default function App() {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Draw Tiny HP Bar
+        // Draw HP Bar
         ctx.fillStyle = '#333';
         ctx.fillRect(enemy.x - 10, enemy.y - 18, 20, 4);
         ctx.fillStyle = '#00ffcc';
@@ -141,32 +141,48 @@ export default function App() {
 
       // 5. Update and Draw Towers
       gameState.current.towers.forEach(tower => {
+        const stats = TOWER_TYPES[tower.type];
+
+        // Draw Tower Shape based on type
         ctx.beginPath();
-        ctx.arc(tower.x, tower.y, 20, 0, Math.PI * 2);
-        ctx.strokeStyle = '#00ffcc';
+        if (tower.type === 1) {
+          ctx.arc(tower.x, tower.y, 20, 0, Math.PI * 2);
+        } else if (tower.type === 2) {
+          ctx.moveTo(tower.x, tower.y - 20);
+          ctx.lineTo(tower.x + 20, tower.y + 15);
+          ctx.lineTo(tower.x - 20, tower.y + 15);
+          ctx.closePath();
+        }
+
+        ctx.strokeStyle = stats.color;
         ctx.lineWidth = 3;
         ctx.shadowBlur = 15;
-        ctx.shadowColor = '#00ffcc';
+        ctx.shadowColor = stats.color;
         ctx.stroke();
         ctx.shadowBlur = 0;
 
+        // Combat Logic
         for (let i = 0; i < gameState.current.enemies.length; i++) {
           let enemy = gameState.current.enemies[i];
           let dist = Math.sqrt(Math.pow(enemy.x - tower.x, 2) + Math.pow(enemy.y - tower.y, 2));
 
-          if (dist < tower.range && timestamp - tower.lastShot > tower.cooldown) {
+          if (dist < stats.range && timestamp - tower.lastShot > stats.cooldown) {
+            // Draw Laser
             ctx.beginPath();
             ctx.moveTo(tower.x, tower.y);
             ctx.lineTo(enemy.x, enemy.y);
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 2;
+            ctx.strokeStyle = stats.beam;
+            ctx.lineWidth = tower.type === 2 ? 4 : 2; // Triangle has thicker beam
             ctx.stroke();
 
-            enemy.hp -= tower.damage;
+            enemy.hp -= stats.damage;
+            tower.lastShot = timestamp;
+
             if (enemy.hp <= 0) {
               gameState.current.enemies.splice(i, 1);
+              gameState.current.money += 10; // EARN MONEY
+              setUiState(prev => ({ ...prev, money: gameState.current.money }));
             }
-            tower.lastShot = timestamp;
             break;
           }
         }
@@ -179,30 +195,37 @@ export default function App() {
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
+  // Handle building towers
   const handleCanvasClick = (e) => {
     if (gameState.current.status !== 'PLAYING' && gameState.current.status !== 'WAITING') return;
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const selectedStats = TOWER_TYPES[uiState.selectedTower];
 
-    gameState.current.towers.push({
-      x: x,
-      y: y,
-      range: 150,
-      damage: 100, // Fixed damage. Eventually, enemies outscale this!
-      cooldown: 500,
-      lastShot: 0
-    });
+    if (gameState.current.money >= selectedStats.cost) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      gameState.current.money -= selectedStats.cost;
+      setUiState(prev => ({ ...prev, money: gameState.current.money }));
+
+      gameState.current.towers.push({
+        x: x,
+        y: y,
+        type: uiState.selectedTower,
+        lastShot: 0
+      });
+    }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '20px', fontFamily: 'monospace', backgroundColor: '#050b14', minHeight: '100vh', color: '#00ffcc' }}>
       <h1 style={{ textShadow: '0 0 10px #00ffcc', letterSpacing: '3px', margin: '0' }}>CYBER DEFENSE OS</h1>
 
-      {/* UI Dashboard */}
+      {/* Top HUD */}
       <div style={{ display: 'flex', gap: '40px', margin: '20px 0', fontSize: '20px', fontWeight: 'bold' }}>
         <div style={{ color: '#4da6ff' }}>WAVE: {uiState.wave}</div>
+        <div style={{ color: '#ffcc00' }}>CREDITS: ${uiState.money}</div>
         <div style={{ color: '#ff3366' }}>INTEGRITY: {uiState.lives} / 10</div>
       </div>
 
@@ -218,7 +241,29 @@ export default function App() {
           backgroundColor: '#000000'
         }}
       />
-      <p style={{ color: '#4da6ff', marginTop: '10px' }}>Click anywhere to deploy Tier 1 Firewall Rings.</p>
+
+      {/* Bottom Toolbar */}
+      <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
+        {Object.values(TOWER_TYPES).map(tower => (
+          <button
+            key={tower.id}
+            onClick={() => setUiState(prev => ({ ...prev, selectedTower: tower.id }))}
+            style={{
+              padding: '10px 20px',
+              backgroundColor: uiState.selectedTower === tower.id ? 'rgba(0, 255, 204, 0.2)' : 'transparent',
+              border: `2px solid ${tower.color}`,
+              color: tower.color,
+              fontFamily: 'monospace',
+              fontSize: '16px',
+              cursor: 'pointer',
+              boxShadow: uiState.selectedTower === tower.id ? `0 0 10px ${tower.color}` : 'none'
+            }}
+          >
+            {tower.name} (${tower.cost})
+          </button>
+        ))}
+      </div>
+      <p style={{ color: '#4da6ff', marginTop: '10px' }}>Select a tower below, then click the grid to deploy.</p>
     </div>
   );
 }
